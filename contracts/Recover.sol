@@ -1,7 +1,6 @@
 pragma solidity ^0.4.25;
 
-import {IArbitrable} from "@kleros/kleros-interaction/contracts/standard/arbitration/Arbitrable.sol";
-import {Arbitrator} from "@kleros/kleros-interaction/contracts/standard/arbitration/Arbitrator.sol";
+import {IArbitrable, Arbitrator} from "@kleros/kleros-interaction/contracts/standard/arbitration/Arbitrator.sol";
 
 contract Recover is IArbitrable {
 
@@ -62,40 +61,13 @@ contract Recover is IArbitrable {
     // *          Events          * //
     // **************************** //
 
-    /** @dev To be emitted when meta-evidence is submitted.
-     *  @param _metaEvidenceID Unique identifier of meta-evidence. Should be the `transactionID`.
-     *  @param _evidence A link to the meta-evidence JSON that follows the ERC 1497 Evidence standard (https://github.com/ethereum/EIPs/issues/1497).
-     */
-    event MetaEvidence(uint indexed _metaEvidenceID, string _evidence);
-
     /** @dev Indicate that a party has to pay a fee or would otherwise be considered as losing.
      *  @param _transactionID The index of the transaction.
      *  @param _party The party who has to pay.
      */
     event HasToPayFee(uint indexed _transactionID, Party _party);
 
-    /** @dev To be raised when evidence is submitted. Should point to the resource (evidences are not to be stored on chain due to gas considerations).
-     *  @param _arbitrator The arbitrator of the contract.
-     *  @param _evidenceGroupID Unique identifier of the evidence group the evidence belongs to.
-     *  @param _party The address of the party submitting the evidence. Note that 0 is kept for evidences not submitted by any party.
-     *  @param _evidence A link to an evidence JSON that follows the ERC 1497 Evidence standard (https://github.com/ethereum/EIPs/issues/1497).
-     */
-    event Evidence(Arbitrator indexed _arbitrator, uint indexed _evidenceGroupID, address indexed _party, string _evidence);
-
-    /** @dev To be emitted when a dispute is created to link the correct meta-evidence to the disputeID.
-     *  @param _arbitrator The arbitrator of the contract.
-     *  @param _disputeID ID of the dispute in the Arbitrator contract.
-     *  @param _metaEvidenceID Unique identifier of meta-evidence. Should be the transactionID.
-     *  @param _evidenceGroupID Unique identifier of the evidence group that is linked to this dispute.
-     */
-    event Dispute(Arbitrator indexed _arbitrator, uint indexed _disputeID, uint _metaEvidenceID, uint _evidenceGroupID);
-
-    /** @dev To be raised when a ruling is given.
-     *  @param _arbitrator The arbitrator giving the ruling.
-     *  @param _disputeID ID of the dispute in the Arbitrator contract.
-     *  @param _ruling The ruling which was given.
-     */
-    event Ruling(Arbitrator indexed _arbitrator, uint indexed _disputeID, uint _ruling);
+    event GoodClaimed(bytes32 indexed goodID, address indexed finder, uint claimID);
 
     // **************************** //
     // *    Contract functions    * //
@@ -249,8 +221,6 @@ contract Recover is IArbitrable {
 
         emit GoodClaimed(_goodID, _finder, claimID);
     }
-
-    event GoodClaimed(bytes32 indexed goodID, address indexed finder, uint claimID);
 
     function validateClaimMetaTransaction(
         bytes32 _goodID,
