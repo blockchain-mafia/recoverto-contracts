@@ -52,10 +52,10 @@ contract Recover is IArbitrable {
     mapping(bytes32 => uint) public goodIDtoClaimAcceptedID; // One-to-one relationship between the good and the claim accepted.
     mapping(uint => uint) public disputeIDtoClaimAcceptedID; // One-to-one relationship between the dispute and the claim accepted.
 
-    Claim[] claims; // Collection of the claims.
+    Claim[] public claims; // Collection of the claims.
     Arbitrator arbitrator; // Address of the arbitrator contract.
     bytes arbitratorExtraData; // Extra data to set up the arbitration.
-    uint feeTimeout; // Time in seconds a party can take to pay arbitration fees before being considered unresponding and lose the dispute.
+    uint public feeTimeout; // Time in seconds a party can take to pay arbitration fees before being considered unresponding and lose the dispute.
 
     // **************************** //
     // *          Events          * //
@@ -193,7 +193,7 @@ contract Recover is IArbitrable {
         _claim(msg.sender, _goodID, _finder, _descriptionLink);
     }
 
-    function _claim(
+    function _claim (
         address claimerAddress,
         bytes32 _goodID,
         address _finder,
@@ -216,28 +216,10 @@ contract Recover is IArbitrable {
             status: Status.NoDispute
         }));
 
-        uint claimID = claims.length + 1; // claimID shall start from 1
+        uint claimID = claims.length - 1;
         good.claimIDs[good.claimIDs.length++] = claimID; // Adds the claim in the collection of the claim ids for this good.
 
         emit GoodClaimed(_goodID, _finder, claimID);
-    }
-
-    function validateClaimMetaTransaction(
-        bytes32 _goodID,
-        address _finder,
-        string memory _descriptionLink,
-        uint8 v, bytes32 r, bytes32 s) public view returns (string memory errorReason) {
-        Good storage good = goods[_goodID];
-        if (good.claimIDs.length > 1) {
-            return "Only funding one metatransaction for each goodie";
-        }
-        bytes memory prefix = "\x19Ethereum Signed Message:\n32";
-        bytes32 msgHash = keccak256(abi.encode(_goodID, _finder, _descriptionLink));
-        bytes32 prefixedHash = keccak256(abi.encodePacked(prefix, msgHash));
-        if (ecrecover(prefixedHash, v, r, s) != good.addressForEncryption) {
-            return "Invalid signature";
-        }
-        return "";
     }
 
     /** @dev Submimt a claim meta transaction
@@ -246,13 +228,31 @@ contract Recover is IArbitrable {
         bytes32 _goodID,
         address _finder,
         string memory _descriptionLink,
-        uint8 v, bytes32 r, bytes32 s){
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public {
         Good storage good = goods[_goodID];
-        string memory errorReason = validateClaimMetaTransaction(_goodID, _finder, _descriptionLink, v, r, s);
+
+        string memory errorReason = validateClaimMetaTransaction(
+            _goodID,
+            _finder,
+            _descriptionLink,
+            v,
+            r,
+            s
+        );
+
         if (bytes(errorReason).length > 0) {
             revert(errorReason);
         }
-        _claim(good.addressForEncryption, _goodID, _finder, _descriptionLink);
+
+        _claim(
+            good.addressForEncryption,
+            _goodID,
+            _finder,
+            _descriptionLink
+        );
     }
 
     /** @dev Accept a claim a good.
@@ -306,10 +306,10 @@ contract Recover is IArbitrable {
 
         finder.transfer(_amount); // Transfer the fund to the finder.
         good.amountLocked -= _amount;
-        if (good.amountLocked == 0) {
+        /*if (good.amountLocked == 0) {
             delete good.claimIDs[goodIDtoClaimAcceptedID[_goodID]];
             delete claims[goodIDtoClaimAcceptedID[_goodID]];
-        }
+        }*/
         // NOTE: We keep the others claims because maybe the owner lost several goods with the same `goodID`.
     }
 
@@ -565,5 +565,29 @@ contract Recover is IArbitrable {
 
     function isGoodExist(bytes32 _goodID) public view returns (bool) {
         return goods[_goodID].exists;
+    }
+
+    function getClaimsByGoodID(bytes32 _goodID) public view returns(uint[]) {
+        return  goods[_goodID].claimIDs;
+    }
+
+    function validateClaimMetaTransaction(
+        bytes32 _goodID,
+        address _finder,
+        string memory _descriptionLink,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) public view returns (string memory errorReason) {
+        Good storage good = goods[_goodID];
+
+        bytes memory prefix = "\x19Ethereum Signed Message:\n32";
+        bytes32 msgHash = keccak256(abi.encode(_goodID, _finder, _descriptionLink));
+        bytes32 prefixedHash = keccak256(abi.encodePacked(prefix, msgHash));
+
+        if (ecrecover(prefixedHash, v, r, s) != good.addressForEncryption)
+            return "Invalid signature";
+
+        return "";
     }
 }

@@ -34,6 +34,12 @@ contract("Recover contract", accounts => {
         await web3.eth.sendSignedTransaction(claimTxSigned.rawTransaction);
         const goodsClaimed = await recover.getPastEvents("GoodClaimed", {goodID: GOOD_ID, finder: finder});
         assert.equal(goodsClaimed.length, 1);
+
+        await recover.acceptClaim(GOOD_ID, goodsClaimed[0].args.claimID, {from: goodOwner, value: REWARD_AMOUNT});
+        const oldBalance = await web3.eth.getBalance(finder);
+        await recover.pay(GOOD_ID, REWARD_AMOUNT, {from: goodOwner});
+        const newBalance = await web3.eth.getBalance(finder);
+        assert.equal(web3.utils.toBN(newBalance).sub(web3.utils.toBN(oldBalance)).toString(), REWARD_AMOUNT);
     });
 
     it("Recover flow with metatx", async () => {
