@@ -1,71 +1,56 @@
 const Recover = artifacts.require("Recover.sol");
-const { signClaim } = require("../utils");
-const recovertoClaimHandler = require("../aws-lambda/recoverto-claim").testHandler;
 
 contract("Recover contract", accounts => {
     const admin = accounts[0];
-    const goodOwner = accounts[1];
+    const itemOwner = accounts[1];
     const REWARD_AMOUNT = web3.utils.toWei("1", "ether");
     const TIMEOUT_LOCKED = 0;
 
     let recover;
 
     before(async () => {
-        recover = await Recover.deployed();
+        recover = await Recover.new(
+            "0x0000000000000000000000000000000000000000", // arbitrator
+            "0x", // arbitratorExtraData
+            "100000", // timeout
+            { from: admin }
+          )
     });
 
-    it("Recover flow without metatx", async () => {
-        const GOOD_ID = "0x1";
-        const goodClaimerAccount = await web3.eth.accounts.create();
+    it("Recover flow the sending of 2100000 wei to the `itemClaimerAccount`", async () => {
+        const ITEM_ID = "0x1";
+        const itemClaimerAccount = await web3.eth.accounts.create();
         const finder = accounts[2];
 
-        // report new lost goodie
-        await recover.addGood(GOOD_ID, goodClaimerAccount.address, "description encrypted link", REWARD_AMOUNT, TIMEOUT_LOCKED, { from: goodOwner });
-        assert.isTrue(await recover.isGoodExist.call(GOOD_ID));
+        // add item
+        await recover.addItem(
+            ITEM_ID,
+            itemClaimerAccount.address, 
+            "description encrypted link", 
+            REWARD_AMOUNT, 
+            TIMEOUT_LOCKED, 
+            { from: itemOwner }
+        );
 
-        // fund the good claim account and send claim
-        web3.eth.sendTransaction({ from: finder, to: goodClaimerAccount.address, value: web3.utils.toWei("2100000" /* 100 Gas Price * 21000 */, "gwei") });
-        const claimTx = recover.contract.methods.claim(GOOD_ID, finder, "description link");
-        const claimTxSigned = await goodClaimerAccount.signTransaction({
+        assert.isTrue(await recover.isItemExist.call(ITEM_ID));
+
+        // fund the item claim account and send claim
+        web3.eth.sendTransaction({ from: finder, to: itemClaimerAccount.address, value: web3.utils.toWei("2100000" /* 100 Gas Price * 21000 */, "gwei") });
+        const claimTx = recover.contract.methods.claim(ITEM_ID, finder, "description link");
+        const claimTxSigned = await itemClaimerAccount.signTransaction({
             to: recover.address,
             data: await claimTx.encodeABI(),
-            gas: parseInt(await claimTx.estimateGas({ from: goodClaimerAccount.address }) * 1.2)
+            gas: parseInt(await claimTx.estimateGas({ from: itemClaimerAccount.address }) * 1.2)
         });
+        // claim the discovered
         await web3.eth.sendSignedTransaction(claimTxSigned.rawTransaction);
-        const goodsClaimed = await recover.getPastEvents("GoodClaimed", {goodID: GOOD_ID, finder: finder});
-        assert.equal(goodsClaimed.length, 1);
-
-        await recover.acceptClaim(GOOD_ID, goodsClaimed[0].args.claimID, {from: goodOwner, value: REWARD_AMOUNT});
+        const itemsClaimed = await recover.getPastEvents("ItemClaimed", {itemID: ITEM_ID, finder: finder});
+        assert.equal(itemsClaimed.length, 1);
+        // Owner accepts the claim.
+        await recover.acceptClaim(ITEM_ID, itemsClaimed[0].args.claimID, {from: itemOwner, value: REWARD_AMOUNT});
         const oldBalance = await web3.eth.getBalance(finder);
-        await recover.pay(GOOD_ID, REWARD_AMOUNT, {from: goodOwner});
+        await recover.pay(ITEM_ID, REWARD_AMOUNT, {from: itemOwner});
         const newBalance = await web3.eth.getBalance(finder);
         assert.equal(web3.utils.toBN(newBalance).sub(web3.utils.toBN(oldBalance)).toString(), REWARD_AMOUNT);
-    });
-
-    it("Recover flow with metatx", async () => {
-        const GOOD_ID = "0x2";
-        const goodClaimerAccount = await web3.eth.accounts.create();
-        const finder = accounts[2];
-
-        // report new lost good
-        await recover.addGood(GOOD_ID, goodClaimerAccount.address, "description encrypted link", REWARD_AMOUNT, TIMEOUT_LOCKED, { from: goodOwner });
-        assert.isTrue(await recover.isGoodExist.call(GOOD_ID));
-
-        // request a meta transaction
-        const claimMetaTxSig = signClaim(web3, goodClaimerAccount.privateKey, GOOD_ID, finder, "description link");
-        const claimMetaTxResult = await recovertoClaimHandler({
-            provider: web3.currentProvider,
-            admin,
-            contractAddress: recover.address,
-            event: {
-                goodID: GOOD_ID,
-                finder: finder,
-                descriptionLink: "description link",
-                sig: {v: claimMetaTxSig.v, r: claimMetaTxSig.r, s: claimMetaTxSig.s}
-            }
-        });
-        assert.isTrue(claimMetaTxResult.body.success);
-        const goodsClaimed = await recover.getPastEvents("GoodClaimed", {goodID: GOOD_ID, finder: finder});
-        assert.equal(goodsClaimed.length, 1);
     });
 });

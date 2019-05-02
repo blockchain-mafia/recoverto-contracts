@@ -8,7 +8,7 @@ async function handler(provider, admin, contractAddress, event) {
     const recover = await Recover.at(contractAddress);
 
     const errorReason = await recover.validateClaimMetaTransaction.call(
-        event.goodID, event.finder, event.descriptionLink,
+        event.itemID, event.finder, event.descriptionLink,
         event.sig.v, event.sig.r, event.sig.s,
         { from: admin }
     );
@@ -23,8 +23,8 @@ async function handler(provider, admin, contractAddress, event) {
     }
 
     try {
-        const tx = await recover.claimMetaTransaction(
-            event.goodID, event.finder, event.descriptionLink,
+        const tx = await recover.claimMetaTransaction( // FIXME: this function does not exist anymore.
+            event.itemID, event.finder, event.descriptionLink,
             event.sig.v, event.sig.r, event.sig.s,
             { from: admin }
         );
