@@ -44,10 +44,10 @@ contract("Recover contract", accounts => {
         });
         // claim the discovered
         await web3.eth.sendSignedTransaction(claimTxSigned.rawTransaction);
-        const itemsClaimed = await recover.getPastEvents("ItemClaimed", {itemID: ITEM_ID, finder: finder});
+        const itemsClaimed = await recover.getPastEvents("ItemClaimed", {_itemID: ITEM_ID, _finder: finder});
         assert.equal(itemsClaimed.length, 1);
         // Owner accepts the claim.
-        await recover.acceptClaim(ITEM_ID, itemsClaimed[0].args.claimID, {from: itemOwner, value: REWARD_AMOUNT});
+        await recover.acceptClaim(ITEM_ID, itemsClaimed[0].args._claimID, {from: itemOwner, value: REWARD_AMOUNT});
         const oldBalance = await web3.eth.getBalance(finder);
         await recover.pay(ITEM_ID, REWARD_AMOUNT, {from: itemOwner});
         const newBalance = await web3.eth.getBalance(finder);

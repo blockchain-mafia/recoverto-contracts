@@ -3,7 +3,7 @@
  *  @reviewers: []
  *  @auditors: []
  *  @bounties: []
- *  @deployments: []
+ *  @deployments: [0xd8120FcA60A0d572CFA48F0110E71ba58BADB8d0]
  */
 
 pragma solidity ^0.4.25;
@@ -82,7 +82,12 @@ contract Recover is IArbitrable {
      */
     event Fund(bytes32 indexed _itemID, Party _party, uint _amount);
 
-    event ItemClaimed(bytes32 indexed itemID, address indexed finder, uint claimID);
+    /** @dev To be emitted when the finder claims an item.
+     *  @param _itemID The index of the item.
+     *  @param _finder The address of the finder.
+     *  @param _claimID The index of the claim.
+     */
+    event ItemClaimed(bytes32 indexed _itemID, address indexed _finder, uint _claimID);
 
     // **************************** //
     // *    Contract functions    * //
@@ -538,11 +543,42 @@ contract Recover is IArbitrable {
     // *     View functions       * //
     // **************************** //
 
+    /** @dev Get the existence of an item.
+     *  @param _itemID The index of the item.
+     *  @return True if the item exists else false.
+     */
     function isItemExist(bytes32 _itemID) public view returns (bool) {
         return items[_itemID].exists;
     }
 
+
+    /** @dev Get claims of an item.
+     *  @param _itemID The index of the item.
+     *  @return The claim IDs.
+     */
     function getClaimsByItemID(bytes32 _itemID) public view returns(uint[]) {
-        return  items[_itemID].claimIDs;
+        return items[_itemID].claimIDs;
     }
-} 
+
+    /** @dev Get IDs for claims where the specified address is the finder.
+     *  Note that the complexity is O(c), where c is amount of claims.
+     *  @param _finder The specified address.
+     *  @return claimIDs The claim IDs.
+     */
+    function getClaimIDsByAddress(address _finder) public view returns (uint[] claimIDs) {
+        uint count = 0;
+        for (uint i = 0; i < claims.length; i++) {
+            if (claims[i].finder == _finder)
+                count++;
+        }
+
+        claimIDs = new uint[](count);
+
+        count = 0;
+
+        for (uint j = 0; j < claims.length; j++) {
+            if (claims[j].finder == _finder)
+                claimIDs[count++] = j;
+        }
+    }
+}
