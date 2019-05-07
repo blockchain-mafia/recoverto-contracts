@@ -3,7 +3,7 @@
  *  @reviewers: []
  *  @auditors: []
  *  @bounties: []
- *  @deployments: [0xd8120FcA60A0d572CFA48F0110E71ba58BADB8d0]
+ *  @deployments: [0xe108942a97f02c21BAe85c3e16a3e58E8be2caB9]
  */
 
 pragma solidity ^0.4.25;
@@ -146,6 +146,13 @@ contract Recover is IArbitrable {
 
         // Store the encrypted link in the meta-evidence.
         emit MetaEvidence(uint(_itemID), _descriptionEncryptedLink);
+    }
+
+    /** @dev Change the general contact fallback information.
+     *  @param _description The contact information.
+     */
+    function changeDescription(string memory _description) public {
+        owners[msg.sender].description = _description;
     }
 
     /** @dev Change the address used to encrypt the description link and the description.
