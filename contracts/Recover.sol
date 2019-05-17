@@ -288,7 +288,6 @@ contract Recover is IArbitrable {
             "The amount paid has to be less than or equal to the amount locked."
         );
 
-        // Checks-Effects-Interactions to avoid reentrancy.
         address finder = itemClaim.finder; // Address of the finder.
 
         finder.transfer(_amount); // Transfer the fund to the finder.
@@ -421,6 +420,11 @@ contract Recover is IArbitrable {
         );
         require(now - itemClaim.lastInteraction >= feeTimeout, "Timeout time has not passed yet.");
 
+        if (itemClaim.finderFee != 0) {
+            itemClaim.finder.send(itemClaim.finderFee);
+            itemClaim.finderFee = 0;
+        }
+
         executeRuling(itemIDtoClaimAcceptedID[_itemID], uint(RulingOptions.OwnerWins));
     }
 
@@ -436,6 +440,11 @@ contract Recover is IArbitrable {
             "The transaction of the item must waiting on the owner of the item."
         );
         require(now - itemClaim.lastInteraction >= feeTimeout, "Timeout time has not passed yet.");
+
+        if (item.ownerFee != 0) {
+            item.owner.send(item.ownerFee);
+            item.ownerFee = 0;
+        }
 
         executeRuling(itemIDtoClaimAcceptedID[_itemID], uint(RulingOptions.FinderWins));
     }
