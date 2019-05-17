@@ -61,8 +61,8 @@ contract Recover is IArbitrable {
     mapping(uint => uint) public disputeIDtoClaimAcceptedID; // One-to-one relationship between the dispute and the claim accepted.
 
     Claim[] public claims; // Collection of the claims.
-    Arbitrator arbitrator; // Address of the arbitrator contract.
-    bytes arbitratorExtraData; // Extra data to set up the arbitration.
+    Arbitrator public arbitrator; // Address of the arbitrator contract.
+    bytes public arbitratorExtraData; // Extra data to set up the arbitration.
     uint public feeTimeout; // Time in seconds a party can take to pay arbitration fees before being considered unresponding and lose the dispute.
 
     // **************************** //

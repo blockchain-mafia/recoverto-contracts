@@ -18,9 +18,9 @@ contract("Recover contract", accounts => {
     });
 
     it("Recover flow the sending of 2100000 wei to the `itemClaimerAccount`", async () => {
-        const ITEM_ID = "0x1";
-        const itemClaimerAccount = await web3.eth.accounts.create();
-        const finder = accounts[2];
+        const ITEM_ID = "0x1"
+        const itemClaimerAccount = await web3.eth.accounts.create()
+        const finder = accounts[2]
 
         // add item
         await recover.addItem(
@@ -30,27 +30,28 @@ contract("Recover contract", accounts => {
             REWARD_AMOUNT, 
             TIMEOUT_LOCKED, 
             { from: itemOwner }
-        );
+        )
 
-        assert.isTrue(await recover.isItemExist.call(ITEM_ID));
+        assert.isTrue(await recover.isItemExist.call(ITEM_ID))
 
         // fund the item claim account and send claim
-        web3.eth.sendTransaction({ from: finder, to: itemClaimerAccount.address, value: web3.utils.toWei("2100000" /* 100 Gas Price * 21000 */, "gwei") });
-        const claimTx = recover.contract.methods.claim(ITEM_ID, finder, "description link");
+        await web3.eth.sendTransaction({ from: finder, to: itemClaimerAccount.address, value: web3.utils.toWei("2100000" /* 100 Gas Price * 21000 */, "gwei") })
+        const claimTx = recover.contract.methods.claim(ITEM_ID, finder, "description link")
         const claimTxSigned = await itemClaimerAccount.signTransaction({
-            to: recover.address,
-            data: await claimTx.encodeABI(),
-            gas: parseInt(await claimTx.estimateGas({ from: itemClaimerAccount.address }) * 1.2)
-        });
+                to: recover.address,
+                data: await claimTx.encodeABI(),
+                gas: parseInt(await claimTx.estimateGas({ from: itemClaimerAccount.address }) * 1.2)
+            }
+        )
         // claim the discovered
-        await web3.eth.sendSignedTransaction(claimTxSigned.rawTransaction);
-        const itemsClaimed = await recover.getPastEvents("ItemClaimed", {_itemID: ITEM_ID, _finder: finder});
-        assert.equal(itemsClaimed.length, 1);
+        await web3.eth.sendSignedTransaction(claimTxSigned.rawTransaction)
+        const itemsClaimed = await recover.getPastEvents("ItemClaimed", {_itemID: ITEM_ID, _finder: finder})
+        assert.equal(itemsClaimed.length, 1)
         // Owner accepts the claim.
-        await recover.acceptClaim(ITEM_ID, itemsClaimed[0].args._claimID, {from: itemOwner, value: REWARD_AMOUNT});
-        const oldBalance = await web3.eth.getBalance(finder);
-        await recover.pay(ITEM_ID, REWARD_AMOUNT, {from: itemOwner});
-        const newBalance = await web3.eth.getBalance(finder);
-        assert.equal(web3.utils.toBN(newBalance).sub(web3.utils.toBN(oldBalance)).toString(), REWARD_AMOUNT);
-    });
-});
+        await recover.acceptClaim(ITEM_ID, itemsClaimed[0].args._claimID, {from: itemOwner, value: REWARD_AMOUNT})
+        const oldBalance = await web3.eth.getBalance(finder)
+        await recover.pay(ITEM_ID, REWARD_AMOUNT, {from: itemOwner})
+        const newBalance = await web3.eth.getBalance(finder)
+        assert.equal(web3.utils.toBN(newBalance).sub(web3.utils.toBN(oldBalance)).toString(), REWARD_AMOUNT)
+    })
+})
