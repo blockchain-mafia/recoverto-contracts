@@ -548,7 +548,6 @@ contract Recover is IArbitrable {
             itemClaim.finder.send(split_amount);
         }
 
-        delete item.claimIDs[disputeIDtoClaimAcceptedID[_claimID]];
         item.amountLocked = 0;
         item.ownerFee = 0;
         itemClaim.finderFee = 0;
