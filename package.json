@@ -1,18 +1,18 @@
 {
   "name": "recoverto-contracts",
   "version": "0.0.1",
-  "description": "Ethereum contracts for recover.to",
+  "description": "Ethereum contracts for recover.to - Lost & Found service",
   "scripts": {
     "clean": "rm -rf build node_modules",
     "build": "npm run build:contracts && npm run build:aws-lambda",
     "build:contracts": "truffle compile",
     "build:aws-lambda": "make -C aws-lambda build",
-    "test": "truffle test"
+    "test": "truffle compile && truffle test"
   },
-  "author": "Miao ZhiCheng <miao@decentral.ee>",
+  "author": "Miao ZhiCheng <miao@decentral.ee>, Wagner Nicolas <contact@wagner-nicolas.com>",
   "license": "MIT",
   "devDependencies": {
-    "@kleros/kleros-interaction": "file:../../kleros/kleros-interaction",
+    "@kleros/kleros-interaction": "^0.9.0",
     "openzeppelin-test-helpers": "^0.1.2",
     "truffle": "^5.0.5",
     "truffle-contract": "^4.0.6",
