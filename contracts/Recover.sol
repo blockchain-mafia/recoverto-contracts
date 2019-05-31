@@ -3,7 +3,7 @@
  *  @reviewers: []
  *  @auditors: []
  *  @bounties: []
- *  @deployments: [0xe108942a97f02c21BAe85c3e16a3e58E8be2caB9]
+ *  @deployments: [0x5b10940344181487aa7827e6e6b8648eb707a8c0]
  */
 
 pragma solidity ^0.4.25;
@@ -254,23 +254,6 @@ contract Recover is IArbitrable {
 
         item.amountLocked += msg.value; // Locked the fund in this contract.
         itemIDtoClaimAcceptedID[_itemID] = _claimID; // Adds the claim in the claim accepted collection.
-    }
-
-    /** @dev Accept a claim a item.
-     *  @param _itemID The index of the item.
-     *  @param _claimID The index of the claim .
-     */
-    function removeClaim(bytes32 _itemID, uint _claimID) public {
-        Item storage item = items[_itemID];
-
-        require(item.owner == msg.sender, "The sender of the transaction must be the owner of the item.");
-        require(claims[_claimID].itemID == _itemID, "The claim of the item must matched with the item.");
-        require(
-            0 == itemIDtoClaimAcceptedID[_itemID],
-            "The claim must not be accepted"
-        );
-
-        delete item.claimIDs[_claimID]; // Removes this claim in the claim collection for this item.
     }
 
     /** @dev Pay finder. To be called if the item has been returned.
