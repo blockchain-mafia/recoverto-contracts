@@ -3,7 +3,7 @@
  *  @reviewers: []
  *  @auditors: []
  *  @bounties: []
- *  @deployments: [0x5b10940344181487aa7827e6e6b8648eb707a8c0]
+ *  @deployments: [0x38E7bdC018396c3cb94ac50fD9c642021B8A5aCC]
  */
 
 pragma solidity ^0.4.25;
@@ -32,7 +32,6 @@ contract Recover is IArbitrable {
         address addressForEncryption; // Address used to encrypt the link of description and to make a claim.
         string descriptionEncryptedLink; // Description encrypted link to chat/find the owner of the item (ex: IPFS URL with the encrypted description).
         uint[] claimIDs; // Collection of the claim to give back the item and get the reward.
-        uint amountLocked; // Amount locked while a claim is accepted.
         uint timeoutLocked; // Timeout after which the finder can call the function `executePayment`.
         uint ownerFee; // Total fees paid by the owner of the item.
         bool exists; // Boolean to check if the item exists or not in the collection.
@@ -47,9 +46,11 @@ contract Recover is IArbitrable {
         bytes32 itemID; // Relation one-to-one with the item.
         address finder; // Address of the item finder.
         string descriptionLink; // Public link description to proof we found the item (ex: IPFS URL with the content).
+        uint amountLocked; // Amount locked while a claim is accepted.
         uint lastInteraction; // Last interaction for the dispute procedure.
         uint finderFee; // Total fees paid by the finder.
         uint disputeID; // If dispute exists, the ID of the claim.
+        bool isAccepted; // True if the claim is accepted.
         Status status; // Status of the claim relative to a dispute.
     }
 
@@ -57,7 +58,6 @@ contract Recover is IArbitrable {
 
     mapping(bytes32 => Item) public items; // Collection of the items.
 
-    mapping(bytes32 => uint) public itemIDtoClaimAcceptedID; // One-to-one relationship between the item and the claim accepted.
     mapping(uint => uint) public disputeIDtoClaimAcceptedID; // One-to-one relationship between the dispute and the claim accepted.
 
     Claim[] public claims; // Collection of the claims.
@@ -70,17 +70,17 @@ contract Recover is IArbitrable {
     // **************************** //
 
     /** @dev Indicate that a party has to pay a fee or would otherwise be considered as losing.
-     *  @param _transactionID The index of the transaction.
+     *  @param _claimID The index of the claim.
      *  @param _party The party who has to pay.
      */
-    event HasToPayFee(uint indexed _transactionID, Party _party);
-    
+    event HasToPayFee(uint indexed _claimID, Party _party);
+
     /** @dev To be emitted when a party pays or reimburses the other.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      *  @param _party The party that paid.
      *  @param _amount The amount paid.
      */
-    event Fund(bytes32 indexed _itemID, Party _party, uint _amount);
+    event Fund(uint indexed _claimID, Party _party, uint _amount);
 
     /** @dev To be emitted when the finder claims an item.
      *  @param _itemID The index of the item.
@@ -133,7 +133,6 @@ contract Recover is IArbitrable {
             addressForEncryption: _addressForEncryption, // Address used to encrypt the link descritpion.
             descriptionEncryptedLink: _descriptionEncryptedLink, // Description encrypted link to chat/find the owner of the item.
             claimIDs: new uint[](0), // Empty array. There is no claims at this moment.
-            amountLocked: 0, // Amount locked is 0. This variable is setting when there an accepting claim.
             timeoutLocked: _timeoutLocked, // If the a claim is accepted, time while the amount is locked.
             ownerFee: 0, // Arbitration fee is 0.
             exists: true // The item exists now.
@@ -193,23 +192,12 @@ contract Recover is IArbitrable {
         Item storage item = items[_itemID];
 
         require(msg.sender == item.owner, "Must be the owner of the item.");
+        require(item.timeoutLocked < _timeoutLocked, "Must be higher than the actual locked time.");
 
         item.timeoutLocked = _timeoutLocked;
     }
 
-    /** @dev Reset claims for a item.
-     *  @param _itemID The ID of the item.
-     */
-    function resetClaims(bytes32 _itemID) public {
-        Item storage item = items[_itemID];
-
-        require(msg.sender == item.owner, "Must be the owner of the item.");
-        require(0 == item.amountLocked, "Must have no accepted claim ongoing.");
-
-        item.claimIDs = new uint[](0);
-    }
-
-    /** @dev Claim a item.
+    /** @dev Claim an item.
      *  @param _itemID The index of the item.
      *  @param _finder The address of the finder.
      *  @param _descriptionLink The link to the description of the item (optionnal).
@@ -227,13 +215,15 @@ contract Recover is IArbitrable {
         );
 
         claims.push(Claim({
-            itemID: _itemID,
-            finder: _finder,
-            descriptionLink: _descriptionLink,
-            lastInteraction: now,
-            finderFee: 0,
-            disputeID: 0,
-            status: Status.NoDispute
+            itemID: _itemID, // The index of the item.
+            finder: _finder, // The finder of the item.
+            descriptionLink: _descriptionLink,  // The claim description.
+            amountLocked: 0, // Amount locked is 0. This variable is setting when there an accepting claim.
+            lastInteraction: now, // The last ineraction in the dispute flow.
+            finderFee: 0, // The arbitration fee paid by the finder.
+            disputeID: 0, // The index of the dispute if any.
+            isAccepted: false, // True is the claim is accepted.
+            status: Status.NoDispute // Status of the dispute.
         }));
 
         uint claimID = claims.length - 1;
@@ -242,83 +232,79 @@ contract Recover is IArbitrable {
         emit ItemClaimed(_itemID, _finder, claimID);
     }
 
-    /** @dev Accept a claim a item.
-     *  @param _itemID The index of the item.
+    /** @dev Accept a claim an item.
      *  @param _claimID The index of the claim.
      */
-    function acceptClaim(bytes32 _itemID, uint _claimID) payable public {
-        Item storage item = items[_itemID];
+    function acceptClaim(uint _claimID) payable public {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
         require(item.owner == msg.sender, "The sender of the transaction must be the owner of the item.");
         require(item.rewardAmount <= msg.value, "The ETH amount must be equal or higher than the reward");
 
-        item.amountLocked += msg.value; // Locked the fund in this contract.
-        itemIDtoClaimAcceptedID[_itemID] = _claimID; // Adds the claim in the claim accepted collection.
+        itemClaim.amountLocked += msg.value; // Locked the fund in this contract.
+        itemClaim.isAccepted = true; // Set the claim as accepted.
     }
 
     /** @dev Pay finder. To be called if the item has been returned.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      *  @param _amount Amount to pay in wei.
      */
-    function pay(bytes32 _itemID, uint _amount) public {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function pay(uint _claimID, uint _amount) public {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
         require(item.owner == msg.sender, "The caller must be the owner of the item.");
         require(itemClaim.status == Status.NoDispute, "The transaction of the item can't be disputed.");
         require(
-            _amount <= item.amountLocked,
+            _amount <= itemClaim.amountLocked,
             "The amount paid has to be less than or equal to the amount locked."
         );
 
-        address finder = itemClaim.finder; // Address of the finder.
-
-        finder.transfer(_amount); // Transfer the fund to the finder.
-        item.amountLocked -= _amount;
+        itemClaim.finder.transfer(_amount); // Transfer the fund to the finder.
+        itemClaim.amountLocked -= _amount; // The value sent is subtracted from the locked funds.
         
-        emit Fund(_itemID, Party.Owner, _amount);
+        emit Fund(_claimID, Party.Owner, _amount);
     }
 
     /** @dev Reimburse owner of the item. To be called if the item can't be fully returned.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      *  @param _amountReimbursed Amount to reimburse in wei.
      */
-    function reimburse(bytes32 _itemID, uint _amountReimbursed) public {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function reimburse(uint _claimID, uint _amountReimbursed) public {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
         require(itemClaim.finder == msg.sender, "The caller must be the finder of the item.");
         require(itemClaim.status == Status.NoDispute, "The transaction item can't be disputed.");
         require(
-            _amountReimbursed <= item.amountLocked,
+            _amountReimbursed <= itemClaim.amountLocked,
             "The amount paid has to be less than or equal to the amount locked."
         );
 
-        address owner = item.owner; // Address of the owner.
+        item.owner.transfer(_amountReimbursed); // Transfer the fund to the owner.
 
-        owner.transfer(_amountReimbursed);
-
-        item.amountLocked -= _amountReimbursed;
+        itemClaim.amountLocked -= _amountReimbursed; // The value reimbursed is subtracted from the locked funds.
         
-        emit Fund(_itemID, Party.Finder, _amountReimbursed);
+        emit Fund(_claimID, Party.Finder, _amountReimbursed);
     }
 
     /** @dev Transfer the transaction's amount to the finder if the timeout has passed.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      */
-    function executeTransaction(bytes32 _itemID) public {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function executeTransaction(uint _claimID) public {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
-        require(itemClaim.itemID == _itemID, "The claim of the item must matched with the item.");
         require(now - itemClaim.lastInteraction >= item.timeoutLocked, "The timeout has not passed yet.");
         require(itemClaim.status == Status.NoDispute, "The transaction of the claim item can't be disputed.");
 
-        itemClaim.finder.transfer(item.amountLocked);
-        emit Fund(_itemID, Party.Owner, item.amountLocked);
-        item.amountLocked = 0;
+        itemClaim.finder.transfer(itemClaim.amountLocked);
 
+        itemClaim.amountLocked = 0;
         itemClaim.status = Status.Resolved;
+
+        emit Fund(_claimID, Party.Owner, itemClaim.amountLocked);
     }
 
 
@@ -328,11 +314,11 @@ contract Recover is IArbitrable {
      *  Note that the arbitrator can have createDispute throw,
      *  which will make this function throw and therefore lead to a party being timed-out.
      *  This is not a vulnerability as the arbitrator can rule in favor of one party anyway.
-     *  @param _itemID The index of the transaction.
+     *  @param _claimID The index of the claim.
      */
-    function payArbitrationFeeByOwner(bytes32 _itemID) public payable {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function payArbitrationFeeByOwner(uint _claimID) public payable {
+        Claim storage itemClaim = claims[_claimID];
+         Item storage item = items[itemClaim.itemID];
 
         uint arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
 
@@ -340,9 +326,8 @@ contract Recover is IArbitrable {
             itemClaim.status < Status.DisputeCreated,
             "Dispute has already been created or because the transaction of the item has been executed."
         );
-        require(itemClaim.itemID == _itemID, "The claim of the item must matched with the item.");
         require(item.owner == msg.sender, "The caller must be the owner of the item.");
-        require(0 != itemIDtoClaimAcceptedID[_itemID], "The claim of the item must be accepted.");
+        require(true == itemClaim.isAccepted, "The claim of the item must be accepted.");
 
         item.ownerFee += msg.value;
         // Require that the total paid to be at least the arbitration cost.
@@ -352,28 +337,28 @@ contract Recover is IArbitrable {
         // The finder still has to pay. This can also happen if he has paid, but arbitrationCost has increased.
         if (itemClaim.finderFee < arbitrationCost) {
             itemClaim.status = Status.WaitingFinder;
-            emit HasToPayFee(uint(_itemID), Party.Finder);
+            emit HasToPayFee(_claimID, Party.Finder);
         } else { // The finder has also paid the fee. We create the dispute
-            raiseDispute(_itemID, arbitrationCost);
+            raiseDispute(_claimID, arbitrationCost);
         }
     }
 
     /** @dev Pay the arbitration fee to raise a dispute. To be called by the finder. UNTRUSTED.
      *  Note that this function mirrors payArbitrationFeeByFinder.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      */
-    function payArbitrationFeeByFinder(bytes32 _itemID) public payable {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function payArbitrationFeeByFinder(uint _claimID) public payable {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
+
         uint arbitrationCost = arbitrator.arbitrationCost(arbitratorExtraData);
 
         require(
             itemClaim.status < Status.DisputeCreated,
             "Dispute has already been created or because the transaction has been executed."
         );
-        require(itemClaim.itemID == _itemID, "The claim of the item must matched with the item.");
         require(itemClaim.finder == msg.sender, "The caller must be the sender.");
-        require(0 != itemIDtoClaimAcceptedID[_itemID], "The claim of the item must be accepted.");
+        require(true == itemClaim.isAccepted, "The claim of the item must be accepted.");
 
         itemClaim.finderFee += msg.value;
         // Require that the total pay at least the arbitration cost.
@@ -384,18 +369,17 @@ contract Recover is IArbitrable {
         // The owner still has to pay. This can also happen if he has paid, but arbitrationCost has increased.
         if (item.ownerFee < arbitrationCost) {
             itemClaim.status = Status.WaitingOwner;
-            emit HasToPayFee(uint(_itemID), Party.Owner);
+            emit HasToPayFee(_claimID, Party.Owner);
         } else { // The owner has also paid the fee. We create the dispute
-            raiseDispute(_itemID, arbitrationCost);
+            raiseDispute(_claimID, arbitrationCost);
         }
     }
 
     /** @dev Reimburse owner of the item if the finder fails to pay the fee.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      */
-    function timeOutByOwner(bytes32 _itemID) public {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function timeOutByOwner(uint _claimID) public {
+        Claim storage itemClaim = claims[_claimID];
 
         require(
             itemClaim.status == Status.WaitingFinder,
@@ -408,15 +392,15 @@ contract Recover is IArbitrable {
             itemClaim.finderFee = 0;
         }
 
-        executeRuling(itemIDtoClaimAcceptedID[_itemID], uint(RulingOptions.OwnerWins));
+        executeRuling(_claimID, uint(RulingOptions.OwnerWins));
     }
 
-    /** @dev Pay finder if owner of the item fails to pay the fee.
-     *  @param _itemID The index of the item.
+    /** @dev Pay finder if the owner of the item fails to pay the fee.
+     *  @param _claimID The index of the claim.
      */
-    function timeOutByFinder(bytes32 _itemID) public {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function timeOutByFinder(uint _claimID) public {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
         require(
             itemClaim.status == Status.WaitingOwner,
@@ -429,21 +413,21 @@ contract Recover is IArbitrable {
             item.ownerFee = 0;
         }
 
-        executeRuling(itemIDtoClaimAcceptedID[_itemID], uint(RulingOptions.FinderWins));
+        executeRuling(_claimID, uint(RulingOptions.FinderWins));
     }
 
     /** @dev Create a dispute. UNTRUSTED.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      *  @param _arbitrationCost Amount to pay the arbitrator.
      */
-    function raiseDispute(bytes32 _itemID, uint _arbitrationCost) internal {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function raiseDispute(uint _claimID, uint _arbitrationCost) internal {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
         itemClaim.status = Status.DisputeCreated;
         uint disputeID = arbitrator.createDispute.value(_arbitrationCost)(AMOUNT_OF_CHOICES, arbitratorExtraData);
-        disputeIDtoClaimAcceptedID[disputeID] = itemIDtoClaimAcceptedID[_itemID];
-        emit Dispute(arbitrator, itemClaim.disputeID, uint(_itemID), uint(_itemID));
+        disputeIDtoClaimAcceptedID[disputeID] = _claimID;
+        emit Dispute(arbitrator, itemClaim.disputeID, _claimID, _claimID);
 
         // Refund finder if it overpaid.
         if (itemClaim.finderFee > _arbitrationCost) {
@@ -461,12 +445,12 @@ contract Recover is IArbitrable {
     }
 
     /** @dev Submit a reference to evidence. EVENT.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      *  @param _evidence A link to an evidence using its URI.
      */
-    function submitEvidence(bytes32 _itemID, string memory _evidence) public {
-        Item storage item = items[_itemID];
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function submitEvidence(uint _claimID, string memory _evidence) public {
+        Claim storage itemClaim = claims[_claimID];
+        Item storage item = items[itemClaim.itemID];
 
         require(
             msg.sender == item.owner || msg.sender == itemClaim.finder,
@@ -474,16 +458,16 @@ contract Recover is IArbitrable {
         );
 
         require(itemClaim.status >= Status.DisputeCreated, "The dispute has not been created yet.");
-        emit Evidence(arbitrator, uint(_itemID), msg.sender, _evidence);
+        emit Evidence(arbitrator, _claimID, msg.sender, _evidence);
     }
 
     /** @dev Appeal an appealable ruling.
      *  Transfer the funds to the arbitrator.
      *  Note that no checks are required as the checks are done by the arbitrator.
-     *  @param _itemID The index of the item.
+     *  @param _claimID The index of the claim.
      */
-    function appeal(bytes32 _itemID) public payable {
-        Claim storage itemClaim = claims[itemIDtoClaimAcceptedID[_itemID]];
+    function appeal(uint _claimID) public payable {
+        Claim storage itemClaim = claims[_claimID];
 
         require(
             msg.sender == items[itemClaim.itemID].owner || msg.sender == itemClaim.finder,
@@ -522,16 +506,16 @@ contract Recover is IArbitrable {
         // Give the arbitration fee back.
         // Note that we use send to prevent a party from blocking the execution.
         if (_ruling == uint(RulingOptions.OwnerWins)) {
-            item.owner.send(item.ownerFee + item.amountLocked);
+            item.owner.send(item.ownerFee + itemClaim.amountLocked);
         } else if (_ruling == uint(RulingOptions.FinderWins)) {
-            itemClaim.finder.send(itemClaim.finderFee + item.amountLocked);
+            itemClaim.finder.send(itemClaim.finderFee + itemClaim.amountLocked);
         } else {
-            uint split_amount = (item.ownerFee + item.amountLocked) / 2;
+            uint split_amount = (item.ownerFee + itemClaim.amountLocked) / 2;
             item.owner.send(split_amount);
             itemClaim.finder.send(split_amount);
         }
 
-        item.amountLocked = 0;
+        itemClaim.amountLocked = 0;
         item.ownerFee = 0;
         itemClaim.finderFee = 0;
         itemClaim.status = Status.Resolved;
@@ -548,7 +532,14 @@ contract Recover is IArbitrable {
     function isItemExist(bytes32 _itemID) public view returns (bool) {
         return items[_itemID].exists;
     }
-
+    
+    /** @dev Get IDs for items where the specified address is the owner.
+     *  @param _owner The specified address.
+     *  @return itemIDs The items IDs.
+     */
+    function getItemIDsByOwner(address _owner) public view returns (bytes32[]) {
+        return owners[_owner].itemIDs;
+    }
 
     /** @dev Get claims of an item.
      *  @param _itemID The index of the item.
@@ -559,7 +550,7 @@ contract Recover is IArbitrable {
     }
 
     /** @dev Get IDs for claims where the specified address is the finder.
-     *  Note that the complexity is O(c), where c is amount of claims.
+     *  Note that the complexity is O(c), where c is the number of claims.
      *  @param _finder The specified address.
      *  @return claimIDs The claim IDs.
      */
