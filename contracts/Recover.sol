@@ -427,6 +427,7 @@ contract Recover is IArbitrable {
         itemClaim.status = Status.DisputeCreated;
         uint disputeID = arbitrator.createDispute.value(_arbitrationCost)(AMOUNT_OF_CHOICES, arbitratorExtraData);
         disputeIDtoClaimAcceptedID[disputeID] = _claimID;
+        itemClaim.disputeID = disputeID;
         emit Dispute(arbitrator, itemClaim.disputeID, _claimID, _claimID);
 
         // Refund finder if it overpaid.
