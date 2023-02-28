@@ -14,7 +14,7 @@
   "devDependencies": {
     "@kleros/kleros-interaction": "^0.9.0",
     "openzeppelin-test-helpers": "^0.1.2",
-    "truffle": "^5.0.5",
+    "truffle": "^5.7.8",
     "truffle-contract": "^4.0.6",
     "truffle-flattener": "^1.3.0",
     "web3-hdwallet-provider": "^1.0.4-fix2",
